@@ -14,13 +14,18 @@ jobs:
       - name: Smoke test CLI scan (headless)
         shell: powershell
         run: |
-          $p = Start-Process .\流氓软件克星.exe -ArgumentList '--scan','--report',"$PWD\cli-scan.json" -Wait -PassThru
-          "exit=$($p.ExitCode)"
-          if (!(Test-Path cli-scan.json)) { throw 'no report' }
+          # 脚本里不写中文文件名(Windows PowerShell 5.1 按系统代码页读脚本会乱码)
+          $exe = (Get-ChildItem -Filter *.exe | Select-Object -First 1).FullName
+          Copy-Item $exe RogueCleaner.exe
+          $p = Start-Process .\RogueCleaner.exe -ArgumentList '--scan','--report',"$PWD\cli-scan.json",'--summary',"$PWD\cli-scan.txt" -Wait -PassThru
+          Write-Host ('exit=' + $p.ExitCode)
+          if (!(Test-Path cli-scan.json) -or !(Test-Path cli-scan.txt)) { throw 'no report' }
           Get-Content cli-scan.json -Raw | ConvertFrom-Json | Select-Object Mode,Version,FindingCount,IsAdministrator | Format-List
+          Get-Content cli-scan.txt -Encoding UTF8 | Select-Object -First 15
       - uses: actions/upload-artifact@v4
         with:
           name: RogueCleaner-cli
           path: |
-            流氓软件克星.exe
+            RogueCleaner.exe
             cli-scan.json
+            cli-scan.txt

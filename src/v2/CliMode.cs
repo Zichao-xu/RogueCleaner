@@ -11,9 +11,11 @@ namespace RogueCleanerV2
     //                                走原有 CleanerEngine: 先备份、可按批次恢复; 只报告项和需要弹卸载器的项不动
     //   --restore <批次ID|latest>     按批次恢复
     //   --report <路径>               报告写到指定位置(默认写数据目录 reports\cli-*.json)
+    //   --summary <路径>              另写一份中文纯文本摘要(给不方便解析 JSON 的调用方, 如 PowerShell 2.0)
     // 退出码: 0 成功; 2 参数错误; 3 有清理/恢复项失败; 1 未预期异常
     internal static class CliMode
     {
+        private static string summaryPath;
         private static readonly string[] Modes = new string[] { "--scan", "--clean-auto", "--restore" };
 
         public static bool IsCliArg(string[] args)
@@ -29,6 +31,7 @@ namespace RogueCleanerV2
         {
             string stamp = DateTime.Now.ToString("yyyyMMdd-HHmmss");
             string reportPath = ArgValue(args, "--report");
+            summaryPath = ArgValue(args, "--summary");
             try
             {
                 if (HasArg(args, "--restore")) return Restore(args, store, reportPath ?? Path.Combine(store.Reports, "cli-restore-" + stamp + ".json"));
@@ -92,7 +95,43 @@ namespace RogueCleanerV2
                 { "Handled", handled },
                 { "Warnings", scanner.Warnings }
             });
+            WriteSummary(summaryPath, clean, findings.Count, selectable, notSelectable, batch);
             return failed > 0 ? 3 : 0;
+        }
+
+        private static void WriteSummary(string path, bool clean, int total, List<Finding> selectable, List<Finding> notSelectable, CleanupBatch batch)
+        {
+            if (string.IsNullOrWhiteSpace(path)) return;
+            List<string> lines = new List<string>();
+            lines.Add("扫描到 " + total + " 项, 可清理 " + selectable.Count + " 项, 仅提示 " + notSelectable.Count + " 项");
+            if (clean)
+            {
+                if (batch == null) lines.Add("没有需要清理的项目");
+                else
+                {
+                    lines.Add("本次处理(批次 " + batch.Id + ", 可恢复):");
+                    foreach (CleanupResult r in batch.Results)
+                    {
+                        bool ok = string.Equals(r.Status, "Done", StringComparison.OrdinalIgnoreCase);
+                        lines.Add((ok ? "  √ " : "  × ") + Label(r.Title, r.Vendor) + (ok ? "" : "  (" + ChineseDisplayText.CleanupStatus(r.Status) + ": " + r.Message + ")"));
+                    }
+                }
+            }
+            else
+            {
+                foreach (Finding f in selectable) lines.Add("  · " + Label(f.UserVisibleName, f.Vendor) + "  → " + f.ActionText);
+            }
+            if (notSelectable.Count > 0)
+            {
+                lines.Add("仅提示、未处理:");
+                foreach (Finding f in notSelectable) lines.Add("  - " + Label(f.UserVisibleName, f.Vendor));
+            }
+            File.WriteAllLines(path, lines.ToArray(), new System.Text.UTF8Encoding(true));
+        }
+
+        private static string Label(string title, string vendor)
+        {
+            return string.IsNullOrWhiteSpace(vendor) ? title : title + " [" + vendor + "]";
         }
 
         private static int Restore(string[] args, DataStore store, string reportPath)
