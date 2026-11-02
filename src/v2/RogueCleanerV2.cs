@@ -84,6 +84,11 @@ namespace RogueCleanerV2
             DataStore store = DataStore.CreateForExecutable(Application.ExecutablePath);
             store.Ensure();
             Logger.Initialize(store);
+            if (CliMode.IsCliArg(args))
+            {
+                Environment.ExitCode = CliMode.Run(args, store);
+                return Environment.ExitCode;
+            }
             bool smoke = HasArg(args, "--scan-smoke");
             bool vendorReviewSmoke = HasArg(args, "--vendor-review-smoke");
             if (vendorReviewSmoke)

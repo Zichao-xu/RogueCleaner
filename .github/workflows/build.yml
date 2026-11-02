@@ -1,0 +1,26 @@
+name: build
+on:
+  push:
+    branches: [cli]
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build (.NET Framework csc, same as Build-Exe.ps1)
+        shell: powershell
+        run: .\Build-Exe.ps1
+      - name: Smoke test CLI scan (headless)
+        shell: powershell
+        run: |
+          $p = Start-Process .\流氓软件克星.exe -ArgumentList '--scan','--report',"$PWD\cli-scan.json" -Wait -PassThru
+          "exit=$($p.ExitCode)"
+          if (!(Test-Path cli-scan.json)) { throw 'no report' }
+          Get-Content cli-scan.json -Raw | ConvertFrom-Json | Select-Object Mode,Version,FindingCount,IsAdministrator | Format-List
+      - uses: actions/upload-artifact@v4
+        with:
+          name: RogueCleaner-cli
+          path: |
+            流氓软件克星.exe
+            cli-scan.json
