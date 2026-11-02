@@ -10,9 +10,8 @@ namespace RogueCleanerV2
     //   --scan                       只扫描, 写报告
     //   --clean-auto                 扫描后清理所有"可勾选清理"项(与界面「勾选可清理」同一判定: BulkSelectable),
     //                                走原有 CleanerEngine: 先备份、可按批次恢复; 只报告项和需要弹卸载器的项不动
-    //   --clean-ads                  更严格: 只清"可勾选清理"里带弹窗/广告/推广/资讯/守护特征的项,
-    //                                且永远保留办公通讯/打印类(微信、QQ、钉钉、打印机等), 给"一键清牛皮癣"用
-    //   --scan --ads-only            预览 --clean-ads 会清哪些, 不动任何东西
+    //   --clean-junk                 一键清牛皮癣: 清"可勾选清理"项, 但保留文件关联、杀毒防护、办公通讯/打印类
+    //   --scan --junk-only           预览 --clean-junk 会清哪些, 不动任何东西
     //   --restore <批次ID|latest>     按批次恢复
     //   --report <路径>               报告写到指定位置(默认写数据目录 reports\cli-*.json)
     //   --summary <路径>              另写一份中文纯文本摘要(给不方便解析 JSON 的调用方, 如 PowerShell 2.0)
@@ -20,18 +19,17 @@ namespace RogueCleanerV2
     internal static class CliMode
     {
         private static string summaryPath;
-        private static readonly string[] Modes = new string[] { "--scan", "--clean-auto", "--clean-ads", "--restore" };
+        private static readonly string[] Modes = new string[] { "--scan", "--clean-auto", "--clean-junk", "--restore" };
 
-        // 牛皮癣特征: 看名称、分类、命中证据、位置
-        private static readonly Regex AdLike = new Regex("弹窗|广告|推广|资讯|迷你页|守护|热点|推荐|画报|新闻|Popup|News|MiniPage|AdPop|Notify|Promo", RegexOptions.IgnoreCase);
-        // 做生意要用的: 命中了也不动
-        private static readonly Regex KeepAlways = new Regex("微信|Weixin|WeChat|企业微信|WXWork|钉钉|DingTalk|QQ(?!浏览器|管家|Browser|PCMgr)|打印|Print|Epson|爱普生|Deli|得力|速达|SuperData", RegexOptions.IgnoreCase);
+        // "清牛皮癣"策略: 工具判定可勾选清理的都清, 但排除会影响日常使用的三类
+        private static readonly Regex KeepCategory = new Regex("文件关联|打开方式|默认打开", RegexOptions.IgnoreCase);                 // 删了文档可能打不开
+        private static readonly Regex KeepSecurity = new Regex("安全卫士托盘|防护入口|杀毒|火绒|Huorong|电脑管家|QQPCRTP", RegexOptions.IgnoreCase); // 客户的杀毒防护
+        private static readonly Regex KeepBusiness = new Regex("微信|Weixin|WeChat|企业微信|WXWork|钉钉|DingTalk|QQ(?!浏览器|管家|Browser|PCMgr)|打印|Print|Epson|爱普生|Deli|得力|速达|SuperData", RegexOptions.IgnoreCase); // 做生意要用的
 
-        private static bool IsAdLike(Finding f)
+        private static bool IsJunk(Finding f)
         {
             string name = (f.UserVisibleName ?? "") + " " + (f.TechnicalLocation ?? "");
-            string all = name + " " + (f.Category ?? "") + " " + (f.Evidence ?? "");
-            return AdLike.IsMatch(all) && !KeepAlways.IsMatch(name);
+            return !KeepCategory.IsMatch(f.Category ?? "") && !KeepSecurity.IsMatch(name) && !KeepBusiness.IsMatch(name);
         }
 
         public static bool IsCliArg(string[] args)
@@ -51,9 +49,9 @@ namespace RogueCleanerV2
             try
             {
                 if (HasArg(args, "--restore")) return Restore(args, store, reportPath ?? Path.Combine(store.Reports, "cli-restore-" + stamp + ".json"));
-                bool clean = HasArg(args, "--clean-ads") || HasArg(args, "--clean-auto");
-                bool adsOnly = HasArg(args, "--clean-ads") || HasArg(args, "--ads-only");   // --scan --ads-only = 预览 --clean-ads 会清什么
-                return ScanAndMaybeClean(store, clean, adsOnly, reportPath ?? Path.Combine(store.Reports, (clean ? "cli-clean-" : "cli-scan-") + stamp + ".json"));
+                bool clean = HasArg(args, "--clean-junk") || HasArg(args, "--clean-auto");
+                bool junkOnly = HasArg(args, "--clean-junk") || HasArg(args, "--junk-only");   // --scan --junk-only = 预览 --clean-junk 会清什么
+                return ScanAndMaybeClean(store, clean, junkOnly, reportPath ?? Path.Combine(store.Reports, (clean ? "cli-clean-" : "cli-scan-") + stamp + ".json"));
             }
             catch (Exception ex)
             {
@@ -68,11 +66,11 @@ namespace RogueCleanerV2
             }
         }
 
-        private static int ScanAndMaybeClean(DataStore store, bool clean, bool adsOnly, string reportPath)
+        private static int ScanAndMaybeClean(DataStore store, bool clean, bool junkOnly, string reportPath)
         {
             ScannerEngine scanner = new ScannerEngine();
             List<Finding> findings = scanner.ScanAll(null);
-            List<Finding> selectable = findings.Where(delegate(Finding f) { return f.BulkSelectable && (!adsOnly || IsAdLike(f)); }).ToList();
+            List<Finding> selectable = findings.Where(delegate(Finding f) { return f.BulkSelectable && (!junkOnly || IsJunk(f)); }).ToList();
             List<Finding> notSelectable = findings.Where(delegate(Finding f) { return !selectable.Contains(f); }).ToList();
 
             CleanupBatch batch = null;
@@ -100,7 +98,7 @@ namespace RogueCleanerV2
 
             CleanerEngine.WriteJson(reportPath, new Dictionary<string, object>
             {
-                { "Mode", (clean ? "clean" : "scan") + (adsOnly ? "-ads" : "") },
+                { "Mode", (clean ? "clean" : "scan") + (junkOnly ? "-junk" : "") },
                 { "Version", AppMeta.Version },
                 { "ScannedAt", DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") },
                 { "IsAdministrator", AdminUtil.IsAdministrator() },
@@ -140,7 +138,7 @@ namespace RogueCleanerV2
             }
             if (notSelectable.Count > 0)
             {
-                lines.Add("保留未动(非弹窗广告类 / 仅提示):");
+                lines.Add("保留未动:");
                 foreach (Finding f in notSelectable) lines.Add("  - " + Label(f.UserVisibleName, f.Vendor));
             }
             File.WriteAllLines(path, lines.ToArray(), new System.Text.UTF8Encoding(true));
