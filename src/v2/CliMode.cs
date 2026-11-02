@@ -12,6 +12,7 @@ namespace RogueCleanerV2
     //                                走原有 CleanerEngine: 先备份、可按批次恢复; 只报告项和需要弹卸载器的项不动
     //   --clean-ads                  更严格: 只清"可勾选清理"里带弹窗/广告/推广/资讯/守护特征的项,
     //                                且永远保留办公通讯/打印类(微信、QQ、钉钉、打印机等), 给"一键清牛皮癣"用
+    //   --scan --ads-only            预览 --clean-ads 会清哪些, 不动任何东西
     //   --restore <批次ID|latest>     按批次恢复
     //   --report <路径>               报告写到指定位置(默认写数据目录 reports\cli-*.json)
     //   --summary <路径>              另写一份中文纯文本摘要(给不方便解析 JSON 的调用方, 如 PowerShell 2.0)
@@ -50,8 +51,8 @@ namespace RogueCleanerV2
             try
             {
                 if (HasArg(args, "--restore")) return Restore(args, store, reportPath ?? Path.Combine(store.Reports, "cli-restore-" + stamp + ".json"));
-                bool adsOnly = HasArg(args, "--clean-ads");
-                bool clean = adsOnly || HasArg(args, "--clean-auto");
+                bool clean = HasArg(args, "--clean-ads") || HasArg(args, "--clean-auto");
+                bool adsOnly = HasArg(args, "--clean-ads") || HasArg(args, "--ads-only");   // --scan --ads-only = 预览 --clean-ads 会清什么
                 return ScanAndMaybeClean(store, clean, adsOnly, reportPath ?? Path.Combine(store.Reports, (clean ? "cli-clean-" : "cli-scan-") + stamp + ".json"));
             }
             catch (Exception ex)
@@ -99,7 +100,7 @@ namespace RogueCleanerV2
 
             CleanerEngine.WriteJson(reportPath, new Dictionary<string, object>
             {
-                { "Mode", adsOnly ? "clean-ads" : (clean ? "clean-auto" : "scan") },
+                { "Mode", (clean ? "clean" : "scan") + (adsOnly ? "-ads" : "") },
                 { "Version", AppMeta.Version },
                 { "ScannedAt", DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") },
                 { "IsAdministrator", AdminUtil.IsAdministrator() },
