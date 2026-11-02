@@ -10,7 +10,7 @@ namespace RogueCleanerV2
     //   --scan                       只扫描, 写报告
     //   --clean-auto                 扫描后清理所有"可勾选清理"项(与界面「勾选可清理」同一判定: BulkSelectable),
     //                                走原有 CleanerEngine: 先备份、可按批次恢复; 只报告项和需要弹卸载器的项不动
-    //   --clean-junk                 一键清牛皮癣: 清"可勾选清理"项, 但保留文件关联、杀毒防护、办公通讯/打印类
+    //   --clean-junk                 一键清牛皮癣: 清所有"可勾选清理"项, 只保留办公通讯/打印/业务软件
     //   --scan --junk-only           预览 --clean-junk 会清哪些, 不动任何东西
     //   --restore <批次ID|latest>     按批次恢复
     //   --report <路径>               报告写到指定位置(默认写数据目录 reports\cli-*.json)
@@ -21,15 +21,12 @@ namespace RogueCleanerV2
         private static string summaryPath;
         private static readonly string[] Modes = new string[] { "--scan", "--clean-auto", "--clean-junk", "--restore" };
 
-        // "清牛皮癣"策略: 工具判定可勾选清理的都清, 但排除会影响日常使用的三类
-        private static readonly Regex KeepCategory = new Regex("文件关联|打开方式|默认打开", RegexOptions.IgnoreCase);                 // 删了文档可能打不开
-        private static readonly Regex KeepSecurity = new Regex("安全卫士托盘|防护入口|杀毒|火绒|Huorong|电脑管家|QQPCRTP", RegexOptions.IgnoreCase); // 客户的杀毒防护
-        private static readonly Regex KeepBusiness = new Regex("微信|Weixin|WeChat|企业微信|WXWork|钉钉|DingTalk|QQ(?!浏览器|管家|Browser|PCMgr)|打印|Print|Epson|爱普生|Deli|得力|速达|SuperData", RegexOptions.IgnoreCase); // 做生意要用的
+        // "清牛皮癣"策略: 工具判定可勾选清理的一律清(含文件关联、杀毒防护入口), 只保留做生意要用的通讯/打印/业务软件
+        private static readonly Regex KeepBusiness = new Regex("微信|Weixin|WeChat|企业微信|WXWork|钉钉|DingTalk|QQ(?!浏览器|管家|Browser|PCMgr)|打印|Print|Epson|爱普生|Deli|得力|速达|SuperData", RegexOptions.IgnoreCase);
 
         private static bool IsJunk(Finding f)
         {
-            string name = (f.UserVisibleName ?? "") + " " + (f.TechnicalLocation ?? "");
-            return !KeepCategory.IsMatch(f.Category ?? "") && !KeepSecurity.IsMatch(name) && !KeepBusiness.IsMatch(name);
+            return !KeepBusiness.IsMatch((f.UserVisibleName ?? "") + " " + (f.TechnicalLocation ?? ""));
         }
 
         public static bool IsCliArg(string[] args)
